@@ -1,1 +1,1 @@
-hello cac ban
+Đây là file test để tải lên FTP server

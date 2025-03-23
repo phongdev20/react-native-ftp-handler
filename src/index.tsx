@@ -18,7 +18,10 @@ const FtpHandler = NativeModules.FtpHandler
     );
 
 // Create event emitter for progress events
-const eventEmitter = new NativeEventEmitter(NativeModules.FtpHandler);
+const eventEmitter = new NativeEventEmitter();
+
+// Token type để xác định nhiệm vụ upload/download
+export type TaskToken = string;
 
 export interface FileInfo {
   name: string;
@@ -28,9 +31,8 @@ export interface FileInfo {
 }
 
 export interface ProgressInfo {
-  type: 'upload' | 'download';
-  path: string;
-  progress: number;
+  token: string;
+  percentage: number;
 }
 
 // Progress listener type
@@ -40,7 +42,7 @@ export type ProgressListener = (info: ProgressInfo) => void;
 const progressListeners: Set<ProgressListener> = new Set();
 
 // Setup the event listener
-eventEmitter.addListener('FtpTransferProgress', (event: ProgressInfo) => {
+eventEmitter.addListener('Progress', (event: ProgressInfo) => {
   // Notify all registered listeners
   progressListeners.forEach((listener) => listener(event));
 });
@@ -59,6 +61,29 @@ export function addProgressListener(listener: ProgressListener): () => void {
   };
 }
 
+// Biến để lưu thông tin kết nối hiện tại
+let _currentHost: string = '';
+let _currentPort: number = 21;
+let _currentUsername: string = '';
+let _currentPassword: string = '';
+
+/**
+ * Setup connection to an FTP server
+ * @param host The FTP server hostname or IP address
+ * @param port The FTP server port (default: 21)
+ * @param username The username
+ * @param password The password
+ * @returns A promise that resolves when setup is complete
+ */
+export function setup(
+  host: string,
+  port: number = 21,
+  username: string,
+  password: string
+): Promise<boolean> {
+  return FtpHandler.setup(host, port, username, password);
+}
+
 /**
  * Connect to an FTP server
  * @param host The FTP server hostname or IP address
@@ -66,7 +91,18 @@ export function addProgressListener(listener: ProgressListener): () => void {
  * @returns A promise that resolves when connected
  */
 export function connect(host: string, port: number = 21): Promise<string> {
-  return FtpHandler.connect(host, port);
+  // Lưu trữ tạm thời các thông tin kết nối để sử dụng sau
+  _currentHost = host;
+  _currentPort = port;
+
+  // Nếu người dùng đã đăng nhập trước đó, thiết lập lại kết nối
+  if (_currentUsername && _currentPassword) {
+    return setup(host, port, _currentUsername, _currentPassword).then(
+      () => 'Connected successfully'
+    );
+  }
+
+  return Promise.resolve('Connection info stored, call login() next');
 }
 
 /**
@@ -76,7 +112,17 @@ export function connect(host: string, port: number = 21): Promise<string> {
  * @returns A promise that resolves when logged in
  */
 export function login(username: string, password: string): Promise<string> {
-  return FtpHandler.login(username, password);
+  _currentUsername = username;
+  _currentPassword = password;
+
+  // Nếu đã gọi connect trước đó
+  if (_currentHost) {
+    return setup(_currentHost, _currentPort, username, password).then(
+      () => 'Login successful'
+    );
+  }
+
+  return Promise.resolve('Login info stored, call connect() first');
 }
 
 /**
@@ -85,86 +131,98 @@ export function login(username: string, password: string): Promise<string> {
  * @returns A promise that resolves with an array of FileInfo objects
  */
 export function listFiles(directory: string): Promise<FileInfo[]> {
-  return FtpHandler.listFiles(directory);
+  return FtpHandler.list(directory);
 }
 
 /**
  * Upload a file to the FTP server
  * @param localPath The local file path
  * @param remotePath The remote file path
- * @returns A promise that resolves when the file is uploaded
+ * @returns A promise that resolves to true when the file is uploaded successfully
  */
 export function uploadFile(
   localPath: string,
   remotePath: string
-): Promise<string> {
+): Promise<boolean> {
   return FtpHandler.uploadFile(localPath, remotePath);
 }
 
 /**
+ * Cancel an upload that is in progress
+ * @param token The upload token to cancel
+ * @returns A promise that resolves to true if canceled successfully
+ */
+export function cancelUploadFile(token: TaskToken): Promise<boolean> {
+  return FtpHandler.cancelUploadFile(token);
+}
+
+/**
  * Download a file from the FTP server
- * @param remotePath The remote file path
- * @param localPath The local file path
- * @returns A promise that resolves when the file is downloaded
+ * @param localPath The local file path where the file will be saved
+ * @param remotePath The remote file path to download
+ * @returns A promise that resolves to true when the file is downloaded successfully
  */
 export function downloadFile(
-  remotePath: string,
-  localPath: string
-): Promise<string> {
-  return FtpHandler.downloadFile(remotePath, localPath);
+  localPath: string,
+  remotePath: string
+): Promise<boolean> {
+  return FtpHandler.downloadFile(localPath, remotePath);
 }
 
 /**
- * Stop the current running task (upload/download)
- * @returns A promise that resolves when the stop request is acknowledged
+ * Cancel a download that is in progress
+ * @param token The download token to cancel
+ * @returns A promise that resolves to true if canceled successfully
  */
-export function stopCurrentTask(): Promise<string> {
-  return FtpHandler.stopCurrentTask();
+export function cancelDownloadFile(token: TaskToken): Promise<boolean> {
+  return FtpHandler.cancelDownloadFile(token);
 }
 
 /**
- * Disconnect from the FTP server
- * @returns A promise that resolves when disconnected
+ * Remove a file or directory from the FTP server
+ * @param path The path to remove (appends "/" for directories)
+ * @returns A promise that resolves to true when removed successfully
  */
-export function disconnect(): Promise<string> {
-  return FtpHandler.disconnect();
+export function remove(path: string): Promise<boolean> {
+  return FtpHandler.remove(path);
 }
 
 /**
- * Create a new directory on the FTP server
- * @param path The directory path
- * @returns A promise that resolves when the directory is created
- */
-export function makeDirectory(path: string): Promise<string> {
-  return FtpHandler.makeDirectory(path);
-}
-
-/**
- * Delete a file from the FTP server
+ * Delete a file from the FTP server (alias for remove)
  * @param path The file path
  * @returns A promise that resolves when the file is deleted
  */
-export function deleteFile(path: string): Promise<string> {
-  return FtpHandler.deleteFile(path);
+export function deleteFile(path: string): Promise<boolean> {
+  return remove(path);
 }
 
 /**
- * Delete a directory from the FTP server
+ * Delete a directory from the FTP server (alias for remove)
  * @param path The directory path
  * @returns A promise that resolves when the directory is deleted
  */
-export function deleteDirectory(path: string): Promise<string> {
-  return FtpHandler.deleteDirectory(path);
+export function deleteDirectory(path: string): Promise<boolean> {
+  // Ensure path ends with / for directory
+  const dirPath = path.endsWith('/') ? path : `${path}/`;
+  return remove(dirPath);
 }
 
 /**
- * Rename a file or directory on the FTP server
- * @param oldPath The current path
- * @param newPath The new path
- * @returns A promise that resolves when the file/directory is renamed
+ * Make sure token is properly formatted for tracking progress
+ * @param localPath Local file path
+ * @param remotePath Remote file path
+ * @param isDownload Whether this is a download operation
+ * @returns Properly formatted token
  */
-export function renameFile(oldPath: string, newPath: string): Promise<string> {
-  return FtpHandler.renameFile(oldPath, newPath);
+export function makeProgressToken(
+  localPath: string,
+  remotePath: string,
+  isDownload: boolean = false
+): TaskToken {
+  if (isDownload) {
+    return `${localPath}<=${remotePath}`;
+  }
+  return `${localPath}=>${remotePath}`;
 }
 
 export default {
@@ -172,12 +230,13 @@ export default {
   login,
   listFiles,
   uploadFile,
+  cancelUploadFile,
   downloadFile,
-  stopCurrentTask,
-  disconnect,
-  makeDirectory,
+  cancelDownloadFile,
+  remove,
   deleteFile,
   deleteDirectory,
-  renameFile,
   addProgressListener,
+  setup,
+  makeProgressToken,
 };

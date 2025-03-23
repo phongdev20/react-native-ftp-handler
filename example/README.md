@@ -1,97 +1,110 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Ứng dụng mẫu FTP Handler
 
-# Getting Started
+Đây là ứng dụng mẫu để demo các tính năng của thư viện React Native FTP Handler.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Cài đặt
 
-## Step 1: Start Metro
+Có 2 cách để cài đặt ứng dụng mẫu:
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+### Sử dụng script tự động (khuyến nghị)
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+Từ thư mục gốc của dự án:
 
-```sh
-# Using npm
-npm start
+```bash
+# Cấp quyền chạy cho script
+chmod +x setup.sh
 
-# OR using Yarn
-yarn start
+# Chạy script
+./setup.sh
 ```
 
-## Step 2: Build and run your app
+Script này sẽ tự động:
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+- Cài đặt dependencies
+- Cài đặt CocoaPods cho iOS (nếu đang sử dụng macOS)
+- Cho phép bạn chọn chạy ứng dụng trên iOS hoặc Android
 
-### Android
+### Cài đặt thủ công
 
-```sh
-# Using npm
-npm run android
+```bash
+# Cài đặt dependencies từ thư mục gốc
+yarn install # hoặc npm install
 
-# OR using Yarn
-yarn android
+# Di chuyển vào thư mục example
+cd example
+
+# Cài đặt dependencies cho ứng dụng mẫu
+yarn install # hoặc npm install
+
+# Cài đặt CocoaPods cho iOS (chỉ trên macOS)
+cd ios && pod install && cd ..
 ```
+
+## Chạy ứng dụng
 
 ### iOS
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
+```bash
 yarn ios
+# hoặc
+npm run ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+### Android
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```bash
+yarn android
+# hoặc
+npm run android
+```
 
-## Step 3: Modify your app
+## Các tính năng demo
 
-Now that you have successfully run the app, let's make changes!
+Ứng dụng mẫu này demo các tính năng sau:
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+1. **Kết nối FTP**
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+   - Kết nối đến máy chủ FTP
+   - Đăng nhập với thông tin xác thực
+   - Ngắt kết nối
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+2. **Quản lý File**
+   - Liệt kê files và thư mục
+   - Điều hướng qua các thư mục
+   - Tạo thư mục mới
+   - Xóa file và thư mục
+   - Tải file xuống với theo dõi tiến trình
+   - Tải file lên với theo dõi tiến trình
 
-## Congratulations! :tada:
+## Lưu ý quan trọng
 
-You've successfully run and modified your React Native App. :partying_face:
+### iOS
 
-### Now what?
+- Ứng dụng mẫu lưu trữ file tải xuống trong thư mục `Documents` của ứng dụng.
+- Không cần cấu hình quyền truy cập bổ sung.
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+### Android
 
-# Troubleshooting
+- Ứng dụng mẫu lưu trữ file tải xuống trong thư mục `Downloads` của thiết bị.
+- Cần quyền truy cập bộ nhớ (đã được cấu hình trong ứng dụng).
+- Trên Android 10+ (API level 29+), ứng dụng sử dụng Scoped Storage.
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## Xử lý lỗi
 
-# Learn More
+Nếu bạn gặp lỗi khi chạy ứng dụng mẫu:
 
-To learn more about React Native, take a look at the following resources:
+1. **Lỗi kết nối FTP**
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+   - Kiểm tra thông tin máy chủ FTP, username và password
+   - Kiểm tra kết nối internet của thiết bị
+
+2. **Lỗi tải file**
+
+   - Kiểm tra quyền truy cập bộ nhớ (Android)
+   - Kiểm tra dung lượng trống của thiết bị
+   - Đảm bảo đường dẫn lưu trữ hợp lệ
+
+3. **Lỗi biên dịch**
+   - Làm sạch build: `cd android && ./gradlew clean` (Android) hoặc xóa thư mục `ios/build` (iOS)
+   - Cài đặt lại dependencies: `yarn install`
+   - Cài đặt lại pods: `cd ios && pod install`
