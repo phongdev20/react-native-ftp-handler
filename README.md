@@ -10,6 +10,8 @@ Thư viện React Native cho phép xử lý các thao tác FTP trên cả nền 
 - ✅ Tải file lên/xuống với theo dõi tiến trình
 - ✅ Hủy tác vụ tải lên/xuống đang chạy
 - ✅ Xóa thư mục và file
+- ✅ Tạo thư mục mới
+- ✅ Đổi tên file và thư mục
 - ✅ Hỗ trợ đầy đủ cho cả iOS và Android
 - ✅ API Promise-based dễ sử dụng
 - ✅ Đa luồng, không chặn UI thread
@@ -120,6 +122,39 @@ const deleteExample = async () => {
     console.error('Lỗi xóa:', error);
   }
 };
+
+// Tạo thư mục mới
+const createDirectory = async () => {
+  try {
+    const success = await FtpHandler.makeDirectory('/path/to/new_directory');
+    console.log(success ? 'Tạo thư mục thành công' : 'Tạo thư mục thất bại');
+  } catch (error) {
+    console.error('Lỗi tạo thư mục:', error);
+  }
+};
+
+// Đổi tên file hoặc thư mục
+const renameFileOrDir = async () => {
+  try {
+    // Đổi tên file
+    const renameFile = await FtpHandler.rename(
+      '/path/to/old_name.txt',
+      '/path/to/new_name.txt'
+    );
+
+    // Đổi tên thư mục
+    const renameDir = await FtpHandler.rename(
+      '/path/to/old_directory',
+      '/path/to/new_directory'
+    );
+
+    console.log(
+      renameFile && renameDir ? 'Đổi tên thành công' : 'Đổi tên thất bại'
+    );
+  } catch (error) {
+    console.error('Lỗi đổi tên:', error);
+  }
+};
 ```
 
 ## API Reference
@@ -136,6 +171,8 @@ const deleteExample = async () => {
 | `cancelDownloadFile`  | Hủy tải xuống đang diễn ra        | token: TaskToken                                                    | Promise<boolean>                   |
 | `deleteFile`          | Xóa file                          | path: string                                                        | Promise<boolean>                   |
 | `deleteDirectory`     | Xóa thư mục                       | path: string                                                        | Promise<boolean>                   |
+| `makeDirectory`       | Tạo thư mục mới                   | path: string                                                        | Promise<boolean>                   |
+| `rename`              | Đổi tên file hoặc thư mục         | oldPath: string, newPath: string                                    | Promise<boolean>                   |
 | `addProgressListener` | Thêm callback theo dõi tiến trình | listener: (info: ProgressInfo) => void                              | () => void (hàm để gỡ bỏ listener) |
 | `makeProgressToken`   | Tạo token theo dõi tiến trình     | localPath: string, remotePath: string, isDownload: boolean = false  | TaskToken                          |
 

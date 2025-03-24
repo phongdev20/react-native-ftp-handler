@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
+  Linking,
 } from 'react-native';
 import FtpHandler, {
   type ProgressInfo,
@@ -54,14 +55,17 @@ function FileListItem({
   onNavigate,
   onDownload,
   onDelete,
+  onRename,
 }: {
   item: FileInfo;
   currentPath: string;
   onNavigate: (path: string) => void;
   onDownload: (path: string) => void;
   onDelete: (path: string, isDir: boolean) => void;
+  onRename: (item: { path: string; name: string; isDir: boolean }) => void;
 }) {
-  const isDirectory = item.type === 'directory';
+  // Xác định xem item có phải là thư mục không (hỗ trợ cả 'directory' và 'dir')
+  const isDirectory = item.type === 'directory' || item.type === 'dir';
   const fullPath =
     currentPath === '/' ? '/' + item.name : currentPath + '/' + item.name;
 
@@ -89,39 +93,63 @@ function FileListItem({
         </View>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => {
-          Alert.alert(
-            `Xóa ${isDirectory ? 'thư mục' : 'tệp tin'}`,
-            `Bạn có chắc muốn xóa ${item.name}?`,
-            [
-              { text: 'Hủy', style: 'cancel' },
-              {
-                text: 'Xóa',
-                onPress: () => onDelete(fullPath, isDirectory),
-                style: 'destructive',
-              },
-            ]
-          );
-        }}
-      >
-        <Text style={styles.deleteButtonText}>Xóa</Text>
-      </TouchableOpacity>
+      <View style={styles.fileActions}>
+        {isDirectory && (
+          <TouchableOpacity
+            style={styles.openButton}
+            onPress={() => onNavigate(fullPath)}
+          >
+            <Text style={styles.openButtonText}>Mở</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.actionIconButton}
+          onPress={() => {
+            onRename({ path: fullPath, name: item.name, isDir: isDirectory });
+          }}
+        >
+          <Text style={styles.actionIconText}>Đổi tên</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => {
+            Alert.alert(
+              `Xóa ${isDirectory ? 'thư mục' : 'tệp tin'}`,
+              `Bạn có chắc muốn xóa ${item.name}?`,
+              [
+                { text: 'Hủy', style: 'cancel' },
+                {
+                  text: 'Xóa',
+                  onPress: () => onDelete(fullPath, isDirectory),
+                  style: 'destructive',
+                },
+              ]
+            );
+          }}
+        >
+          <Text style={styles.deleteButtonText}>Xóa</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 export default function App() {
+  // Chức năng di chuyển qua lại giữa các thư mục:
+  // 1. Nút Quay lại (←) và Tiến tới (→): Chuyển qua lại giữa các thư mục đã truy cập
+  // 2. Breadcrumb navigation: Hiển thị đường dẫn hiện tại và cho phép nhấp vào bất kỳ phần nào
+  // 3. Lịch sử thư mục gần đây: Nhấp vào nút "⋮" để xem và truy cập nhanh các thư mục đã truy cập gần đây
+
   const [status, setStatus] = React.useState('');
   const [files, setFiles] = React.useState<FileInfo[]>([]);
   const [host, setHost] = React.useState('eu-central-1.sftpcloud.io');
   const [port, setPort] = React.useState('21');
   const [username, setUsername] = React.useState(
-    '938e49c1f9ee4eaead43105b3083ca24'
+    'cd96ac68e88544548029217bd6f6ba5d'
   );
   const [password, setPassword] = React.useState(
-    'aRE3hA9UcJ3eS8fmV3KFc2ZbsDgG2kgN'
+    '2wblXDpJWBMs3DmvNrL2jWp45ox2AHo6'
   );
   const [remotePath, setRemotePath] = React.useState('/');
   const [isUploading, setIsUploading] = React.useState(false);
@@ -138,6 +166,11 @@ export default function App() {
   } | null>(null);
   const [newFileName, setNewFileName] = React.useState('');
   const [pathHistory, setPathHistory] = React.useState<string[]>(['/']);
+  const [currentHistoryIndex, setCurrentHistoryIndex] = React.useState(0);
+  const [recentDirectories, setRecentDirectories] = React.useState<string[]>(
+    []
+  );
+  const [showBrowseHistory, setShowBrowseHistory] = React.useState(false);
 
   // Thêm biến state cho chức năng tạm dừng
   const [isPaused, setIsPaused] = React.useState(false);
@@ -189,30 +222,33 @@ export default function App() {
   }, [remotePath, isConnected]);
 
   // Hàm xử lý lỗi kết nối
-  const handleConnectionError = (error: any) => {
-    const errorMsg = error.message || '';
+  const handleConnectionError = React.useCallback(
+    (error: any) => {
+      const errorMsg = error.message || '';
 
-    if (
-      errorMsg.includes('connection') ||
-      errorMsg.includes('timeout') ||
-      errorMsg.includes('closed') ||
-      errorMsg.includes('EOF')
-    ) {
-      if (isConnected) {
-        setIsConnected(false);
-        setStatus('Kết nối đã bị đóng: ' + errorMsg);
+      if (
+        errorMsg.includes('connection') ||
+        errorMsg.includes('timeout') ||
+        errorMsg.includes('closed') ||
+        errorMsg.includes('EOF')
+      ) {
+        if (isConnected) {
+          setIsConnected(false);
+          setStatus('Kết nối đã bị đóng: ' + errorMsg);
 
-        // Hiển thị cảnh báo cho người dùng
-        Alert.alert(
-          'Kết nối bị ngắt',
-          'Kết nối FTP đã bị đóng mà không có thông báo từ server. Vui lòng kết nối lại.',
-          [{ text: 'OK' }]
-        );
+          // Hiển thị cảnh báo cho người dùng
+          Alert.alert(
+            'Kết nối bị ngắt',
+            'Kết nối FTP đã bị đóng mà không có thông báo từ server. Vui lòng kết nối lại.',
+            [{ text: 'OK' }]
+          );
+        }
+        return true;
       }
-      return true;
-    }
-    return false;
-  };
+      return false;
+    },
+    [isConnected]
+  );
 
   // Kết nối đến máy chủ FTP
   const connect = async () => {
@@ -249,7 +285,7 @@ export default function App() {
   };
 
   // Liệt kê files trong thư mục
-  const listFiles = async () => {
+  const listFiles = React.useCallback(async () => {
     try {
       setStatus('Đang tải danh sách...');
       const result = await FtpHandler.listFiles(remotePath);
@@ -261,26 +297,59 @@ export default function App() {
       // Xử lý lỗi kết nối bằng hàm chung
       handleConnectionError(error);
     }
-  };
+  }, [remotePath, handleConnectionError]);
 
   // Điều hướng đến thư mục
   const navigateToDirectory = async (path: string) => {
     // Kiểm tra kết nối trước khi thực hiện thao tác
     if (!(await checkConnection())) return;
 
+    // Thêm thư mục vào danh sách gần đây nếu chưa có
+    setRecentDirectories((prev) => {
+      if (!prev.includes(path) && path !== '/') {
+        // Giữ tối đa 5 thư mục gần đây
+        const newList = [path, ...prev.filter((p) => p !== path)].slice(0, 5);
+        return newList;
+      }
+      return prev;
+    });
+
     setRemotePath(path);
-    setPathHistory((prev) => [...prev, path]);
+
+    // Cập nhật lịch sử điều hướng
+    if (currentHistoryIndex < pathHistory.length - 1) {
+      // Nếu đang ở giữa lịch sử, cắt bỏ phần phía sau
+      setPathHistory((prev) => [
+        ...prev.slice(0, currentHistoryIndex + 1),
+        path,
+      ]);
+    } else {
+      // Nếu đang ở cuối lịch sử, thêm vào
+      setPathHistory((prev) => [...prev, path]);
+    }
+    setCurrentHistoryIndex((prev) => prev + 1);
   };
 
   // Quay lại thư mục trước đó
   const navigateBack = () => {
-    if (pathHistory.length > 1) {
-      const newHistory = [...pathHistory];
-      newHistory.pop(); // Xóa path hiện tại
-      const previousPath = newHistory[newHistory.length - 1];
+    if (currentHistoryIndex > 0) {
+      const newIndex = currentHistoryIndex - 1;
+      setCurrentHistoryIndex(newIndex);
+      const previousPath = pathHistory[newIndex];
       if (previousPath) {
         setRemotePath(previousPath);
-        setPathHistory(newHistory);
+      }
+    }
+  };
+
+  // Tiến tới thư mục phía trước
+  const navigateForward = () => {
+    if (currentHistoryIndex < pathHistory.length - 1) {
+      const newIndex = currentHistoryIndex + 1;
+      setCurrentHistoryIndex(newIndex);
+      const nextPath = pathHistory[newIndex];
+      if (nextPath) {
+        setRemotePath(nextPath);
       }
     }
   };
@@ -288,16 +357,28 @@ export default function App() {
   // Tạo thư mục mới
   const createDirectory = async () => {
     try {
-      if (!newDirName) {
+      if (!newDirName.trim()) {
+        Alert.alert('Lỗi', 'Vui lòng nhập tên thư mục');
         return;
       }
 
-      // Không có phương thức makeDirectory(), thông báo lỗi
-      setStatus('Tính năng tạo thư mục không được hỗ trợ trong phiên bản này');
-      setNewDirName('');
+      const fullPath =
+        remotePath === '/' ? `/${newDirName}` : `${remotePath}/${newDirName}`;
+
+      setStatus('Đang tạo thư mục...');
+      // Sử dụng phương thức mới để tạo thư mục
+      await FtpHandler.makeDirectory(fullPath);
+
+      setStatus(`Đã tạo thư mục: ${newDirName}`);
       setShowNewDirModal(false);
+      setNewDirName('');
+
+      // Cập nhật danh sách để hiển thị thư mục mới
+      await listFiles();
     } catch (error: any) {
-      setStatus('Lỗi tạo thư mục: ' + error.message);
+      if (!handleConnectionError(error)) {
+        setStatus(`Lỗi tạo thư mục: ${error.message}`);
+      }
     }
   };
 
@@ -332,15 +413,29 @@ export default function App() {
   // Đổi tên file hoặc thư mục
   const renameFileOrDir = async () => {
     try {
-      if (!renameItem || !newFileName) {
+      if (!renameItem || !newFileName.trim()) {
+        Alert.alert('Lỗi', 'Vui lòng nhập tên mới');
         return;
       }
 
-      setStatus('Đổi tên không được hỗ trợ trong phiên bản này');
+      const dirPath = remotePath === '/' ? '' : remotePath;
+      const oldPath = `${dirPath}/${renameItem.name}`;
+      const newPath = `${dirPath}/${newFileName}`;
+
+      setStatus('Đang đổi tên...');
+      // Sử dụng phương thức mới để đổi tên
+      await FtpHandler.rename(oldPath, newPath);
+
+      setStatus(`Đã đổi tên thành công`);
       setRenameItem(null);
       setNewFileName('');
+
+      // Cập nhật danh sách
+      await listFiles();
     } catch (error: any) {
-      setStatus('Lỗi đổi tên: ' + error.message);
+      if (!handleConnectionError(error)) {
+        setStatus(`Lỗi đổi tên: ${error.message}`);
+      }
     }
   };
 
@@ -547,12 +642,138 @@ export default function App() {
       }
 
       const fileName = remoteFilePath.split('/').pop();
-      let downloadPath;
+
+      // Kiểm tra tên file hợp lệ
+      if (!fileName) {
+        setStatus('Lỗi: Không thể xác định tên file');
+        return;
+      }
 
       if (Platform.OS === 'ios') {
-        downloadPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+        const downloadPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+        await handleDownload(downloadPath, remoteFilePath, fileName);
       } else {
-        downloadPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+        // Android: hiển thị dialog cho người dùng chọn
+        Alert.alert('Chọn vị trí lưu file', 'Bạn muốn lưu file ở đâu?', [
+          {
+            text: 'Thư mục Download',
+            onPress: () => {
+              try {
+                const downloadPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+                handleDownload(downloadPath, remoteFilePath, fileName);
+              } catch (err: any) {
+                setStatus('Lỗi tải xuống: ' + err.message);
+              }
+            },
+          },
+          {
+            text: 'Thư mục ứng dụng',
+            onPress: () => {
+              try {
+                const downloadPath = `${RNFS.ExternalDirectoryPath}/${fileName}`;
+                handleDownload(downloadPath, remoteFilePath, fileName);
+              } catch (err: any) {
+                setStatus('Lỗi tải xuống: ' + err.message);
+              }
+            },
+          },
+          {
+            text: 'Hủy',
+            style: 'cancel',
+            onPress: () => {
+              setStatus('Đã hủy tải xuống');
+            },
+          },
+        ]);
+      }
+    } catch (error: any) {
+      setStatus('Lỗi tải xuống: ' + error.message);
+      handleConnectionError(error);
+    }
+  };
+
+  // Hàm xử lý tổng thể việc tải xuống
+  const handleDownload = async (
+    downloadPath: string,
+    remoteFilePath: string,
+    fileName: string
+  ) => {
+    try {
+      // Kiểm tra xem file đã tồn tại chưa
+      const fileExists = await RNFS.exists(downloadPath);
+
+      if (fileExists) {
+        Alert.alert(
+          'File đã tồn tại',
+          'File này đã tồn tại. Bạn muốn thay thế hay tải với tên khác?',
+          [
+            {
+              text: 'Thay thế',
+              onPress: async () => {
+                try {
+                  // Xóa file cũ trước khi tải xuống file mới
+                  setStatus('Đang xóa file cũ...');
+                  await RNFS.unlink(downloadPath).catch((err) => {
+                    console.log('Lỗi khi xóa file cũ: ', err);
+                    // Tiếp tục ngay cả khi không xóa được, vì FTP có thể ghi đè
+                  });
+
+                  // Sau khi xóa, tiến hành tải xuống file mới
+                  executeDownload(downloadPath, remoteFilePath).catch((err) => {
+                    setStatus('Lỗi tải xuống: ' + err.message);
+                  });
+                } catch (err: any) {
+                  console.error('Lỗi trong quá trình thay thế file: ', err);
+                  setStatus('Lỗi khi thay thế file: ' + err.message);
+                }
+              },
+            },
+            {
+              text: 'Tải với tên khác',
+              onPress: () => {
+                try {
+                  const timestamp = new Date().getTime();
+                  const newPath = downloadPath.replace(
+                    fileName,
+                    `${timestamp}_${fileName}`
+                  );
+                  executeDownload(newPath, remoteFilePath).catch((err) => {
+                    setStatus('Lỗi tải xuống: ' + err.message);
+                  });
+                } catch (err: any) {
+                  setStatus('Lỗi khi tạo tên file mới: ' + err.message);
+                }
+              },
+            },
+            {
+              text: 'Hủy',
+              style: 'cancel',
+              onPress: () => {
+                setStatus('Đã hủy tải xuống');
+              },
+            },
+          ]
+        );
+      } else {
+        await executeDownload(downloadPath, remoteFilePath);
+      }
+    } catch (error: any) {
+      setStatus('Lỗi khi kiểm tra file: ' + error.message);
+    }
+  };
+
+  // Thực hiện tải xuống
+  const executeDownload = async (
+    downloadPath: string,
+    remoteFilePath: string
+  ) => {
+    try {
+      // Đảm bảo thư mục cha tồn tại
+      const dirPath = downloadPath.substring(0, downloadPath.lastIndexOf('/'));
+      const dirExists = await RNFS.exists(dirPath);
+
+      if (!dirExists && Platform.OS === 'android') {
+        await RNFS.mkdir(dirPath);
       }
 
       setProgress(0);
@@ -567,28 +788,124 @@ export default function App() {
       );
       setCurrentDownloadToken(token);
 
-      // LƯU Ý: Đối số đã thay đổi thứ tự trong API mới: downloadFile(localPath, remotePath)
+      // Thực hiện tải xuống
       const result = await FtpHandler.downloadFile(
         downloadPath,
         remoteFilePath
       );
 
+      if (!result) {
+        setStatus('Tải xuống thất bại');
+        setCurrentDownloadToken(null);
+        setIsDownloading(false);
+        return false;
+      }
+
+      // Kiểm tra file tồn tại sau khi tải
+      const fileExists = await RNFS.exists(downloadPath);
+      if (!fileExists) {
+        setStatus('Tải xuống thất bại: File không tồn tại sau khi tải');
+        setCurrentDownloadToken(null);
+        setIsDownloading(false);
+        return false;
+      }
+
+      // Kiểm tra xem file có thể mở được không
+      let canOpen = false;
+      try {
+        canOpen = await checkIfFileCanBeOpened(downloadPath);
+      } catch (err) {
+        console.log('Không thể kiểm tra khả năng mở file', err);
+      }
+
       // Thông báo thành công
+      const buttons = [{ text: 'OK' }] as Array<{
+        text: string;
+        onPress?: () => void;
+        style?: 'default' | 'cancel' | 'destructive';
+      }>;
+
+      if (canOpen) {
+        buttons.push({
+          text: 'Mở file',
+          onPress: () => {
+            try {
+              openDownloadedFile(downloadPath);
+            } catch (err: any) {
+              setStatus('Không thể mở file: ' + err.message);
+            }
+          },
+        });
+      }
+
       Alert.alert(
         'Tải xuống hoàn tất',
         `File đã được lưu tại: ${downloadPath}`,
-        [{ text: 'OK' }]
+        buttons
       );
 
-      setStatus(result ? 'Tải xuống thành công' : 'Tải xuống thất bại');
+      setStatus('Tải xuống thành công');
       setCurrentDownloadToken(null);
+      return true;
     } catch (error: any) {
       setStatus('Lỗi tải xuống: ' + error.message);
-      // Xử lý lỗi kết nối bằng hàm chung
       handleConnectionError(error);
       setCurrentDownloadToken(null);
+      return false;
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Kiểm tra xem file có thể mở được không
+  const checkIfFileCanBeOpened = async (filePath: string) => {
+    try {
+      const extension = filePath.split('.').pop()?.toLowerCase();
+      // Kiểm tra theo định dạng file phổ biến
+      const openableExtensions = [
+        'pdf',
+        'jpg',
+        'jpeg',
+        'png',
+        'txt',
+        'doc',
+        'docx',
+        'xls',
+        'xlsx',
+        'ppt',
+        'pptx',
+      ];
+      return openableExtensions.includes(extension || '');
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Mở file đã tải xuống
+  const openDownloadedFile = async (filePath: string) => {
+    try {
+      // Sử dụng Linking để mở file
+      if (Platform.OS === 'android') {
+        const fileUri = `file://${filePath}`;
+        const canOpen = await Linking.canOpenURL(fileUri);
+
+        if (canOpen) {
+          await Linking.openURL(fileUri);
+        } else {
+          setStatus('Không thể mở file: Không có ứng dụng hỗ trợ');
+        }
+      } else if (Platform.OS === 'ios') {
+        RNFS.readFile(filePath, 'base64')
+          .then(() => {
+            // Trên iOS, bạn có thể sử dụng QuickLook hoặc các thư viện khác để mở file
+            setStatus('iOS chưa hỗ trợ mở file trực tiếp trong ứng dụng này');
+          })
+          .catch((error) => {
+            setStatus('Không thể đọc file: ' + error.message);
+          });
+      }
+    } catch (error: any) {
+      setStatus('Không thể mở file: ' + error.message);
     }
   };
 
@@ -662,6 +979,13 @@ export default function App() {
       </View>
     );
   };
+
+  // Cập nhật danh sách files khi đổi thư mục
+  React.useEffect(() => {
+    if (isConnected) {
+      listFiles();
+    }
+  }, [remotePath, isConnected, listFiles]);
 
   // Thêm kiểm tra kết nối định kỳ
   React.useEffect(() => {
@@ -755,22 +1079,111 @@ export default function App() {
         {/* Hiển thị đường dẫn hiện tại */}
         {isConnected && (
           <View style={styles.pathContainer}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={navigateBack}
-              disabled={pathHistory.length <= 1}
-            >
-              <Text
+            <View style={styles.navButtons}>
+              <TouchableOpacity
                 style={[
-                  styles.backButtonText,
-                  pathHistory.length <= 1 && styles.disabledText,
+                  styles.navButton,
+                  currentHistoryIndex === 0 && styles.disabledButton,
                 ]}
+                onPress={navigateBack}
+                disabled={currentHistoryIndex === 0}
               >
-                ← Quay lại
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.navButtonText,
+                    currentHistoryIndex === 0 && styles.disabledText,
+                  ]}
+                >
+                  ←
+                </Text>
+              </TouchableOpacity>
 
-            <Text style={styles.currentPath}>Đường dẫn: {remotePath}</Text>
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  currentHistoryIndex >= pathHistory.length - 1 &&
+                    styles.disabledButton,
+                ]}
+                onPress={navigateForward}
+                disabled={currentHistoryIndex >= pathHistory.length - 1}
+              >
+                <Text
+                  style={[
+                    styles.navButtonText,
+                    currentHistoryIndex >= pathHistory.length - 1 &&
+                      styles.disabledText,
+                  ]}
+                >
+                  →
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.breadcrumbContainer}>
+              {remotePath.split('/').map((part, index, array) => {
+                if (!part && index === 0) {
+                  // Root directory
+                  return (
+                    <TouchableOpacity
+                      key="root"
+                      style={styles.breadcrumbItem}
+                      onPress={() => navigateToDirectory('/')}
+                    >
+                      <Text style={styles.breadcrumbText}>Gốc</Text>
+                    </TouchableOpacity>
+                  );
+                } else if (part) {
+                  // Build the path up to this part
+                  const pathUpToHere =
+                    '/' + array.slice(1, index + 1).join('/');
+                  return (
+                    <React.Fragment key={index}>
+                      <Text style={styles.breadcrumbSeparator}>/</Text>
+                      <TouchableOpacity
+                        style={styles.breadcrumbItem}
+                        onPress={() => navigateToDirectory(pathUpToHere)}
+                      >
+                        <Text style={styles.breadcrumbText}>{part}</Text>
+                      </TouchableOpacity>
+                    </React.Fragment>
+                  );
+                }
+                return null;
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.historyButton}
+              onPress={() => setShowBrowseHistory(!showBrowseHistory)}
+            >
+              <Text style={styles.historyButtonText}>⋮</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Hiển thị menu thư mục gần đây */}
+        {isConnected && showBrowseHistory && (
+          <View style={styles.historyMenu}>
+            <Text style={styles.historyMenuTitle}>Thư mục gần đây</Text>
+            {recentDirectories.length > 0 ? (
+              recentDirectories.map((path, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.historyMenuItem}
+                  onPress={() => {
+                    navigateToDirectory(path);
+                    setShowBrowseHistory(false);
+                  }}
+                >
+                  <Text style={styles.historyMenuItemIcon}>📁</Text>
+                  <Text style={styles.historyMenuItemText}>{path}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.emptyHistoryText}>
+                Chưa có thư mục nào được truy cập gần đây
+              </Text>
+            )}
           </View>
         )}
 
@@ -817,13 +1230,33 @@ export default function App() {
                     onNavigate={navigateToDirectory}
                     onDownload={downloadFile}
                     onDelete={deleteItem}
+                    onRename={(item) => {
+                      setRenameItem(item);
+                      setNewFileName(item.name);
+                    }}
                   />
                 ))}
               </View>
             ) : (
-              <Text style={styles.emptyMessage}>
-                Không có file nào trong thư mục này
-              </Text>
+              <View style={styles.emptyDirectoryContainer}>
+                <Text style={styles.emptyDirectoryIcon}>📂</Text>
+                <Text style={styles.emptyDirectoryTitle}>Thư mục trống</Text>
+                <Text style={styles.emptyMessage}>
+                  Không có file hoặc thư mục nào trong "
+                  {remotePath === '/'
+                    ? 'Thư mục gốc'
+                    : remotePath.split('/').pop()}
+                  "
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyDirCreateButton}
+                  onPress={() => setShowNewDirModal(true)}
+                >
+                  <Text style={styles.emptyDirCreateButtonText}>
+                    Tạo thư mục mới
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}
@@ -885,38 +1318,31 @@ export default function App() {
 
       {/* Modal tạo thư mục mới */}
       <Modal
-        visible={showNewDirModal}
+        animationType="slide"
         transparent={true}
-        animationType="fade"
+        visible={showNewDirModal}
         onRequestClose={() => setShowNewDirModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Tạo thư mục mới</Text>
-
             <TextInput
               style={styles.modalInput}
-              placeholder="Nhập tên thư mục"
+              placeholder="Tên thư mục"
               value={newDirName}
               onChangeText={setNewDirName}
               autoFocus
             />
-
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setNewDirName('');
-                  setShowNewDirModal(false);
-                }}
+                style={styles.modalButton}
+                onPress={() => setShowNewDirModal(false)}
               >
                 <Text style={styles.modalButtonText}>Hủy</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={styles.modalConfirmButton}
+                style={styles.modalButtonPrimary}
                 onPress={createDirectory}
-                disabled={!newDirName}
               >
                 <Text style={styles.modalButtonText}>Tạo</Text>
               </TouchableOpacity>
@@ -927,29 +1353,29 @@ export default function App() {
 
       {/* Modal đổi tên */}
       <Modal
-        visible={renameItem !== null}
+        animationType="slide"
         transparent={true}
-        animationType="fade"
+        visible={renameItem !== null}
         onRequestClose={() => setRenameItem(null)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               Đổi tên {renameItem?.isDir ? 'thư mục' : 'tệp tin'}
             </Text>
-
+            <Text style={styles.modalSubtitle}>
+              Tên hiện tại: {renameItem?.name}
+            </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Nhập tên mới"
+              placeholder="Tên mới"
               value={newFileName}
               onChangeText={setNewFileName}
-              defaultValue={renameItem?.name}
               autoFocus
             />
-
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.modalCancelButton}
+                style={styles.modalButton}
                 onPress={() => {
                   setRenameItem(null);
                   setNewFileName('');
@@ -957,13 +1383,11 @@ export default function App() {
               >
                 <Text style={styles.modalButtonText}>Hủy</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={styles.modalConfirmButton}
+                style={styles.modalButtonPrimary}
                 onPress={renameFileOrDir}
-                disabled={!newFileName}
               >
-                <Text style={styles.modalButtonText}>Lưu</Text>
+                <Text style={styles.modalButtonText}>Đổi tên</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1086,77 +1510,110 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     borderRadius: 4,
   },
-  backButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+  navButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  navButton: {
+    padding: 8,
     borderRadius: 4,
     backgroundColor: '#f0f0f0',
-    marginRight: 8,
   },
-  backButtonText: {
-    color: '#2196F3',
+  disabledButton: {
+    backgroundColor: '#aaa',
+  },
+  navButtonText: {
+    fontSize: 16,
     fontWeight: 'bold',
   },
   disabledText: {
     color: '#aaa',
   },
-  currentPath: {
-    flex: 1,
-    fontSize: 12,
-    color: '#666',
-  },
-  fileList: {
-    marginTop: 8,
-  },
-  fileItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#efefef',
-    paddingVertical: 8,
-  },
-  fileButton: {
-    flex: 1,
+  breadcrumbContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  fileIcon: {
-    fontSize: 24,
-    marginRight: 8,
+  breadcrumbItem: {
+    padding: 8,
+    borderRadius: 4,
+    backgroundColor: '#f0f0f0',
   },
-  folderIcon: {
-    color: '#2196F3',
-  },
-  docIcon: {
-    color: '#FF5722',
-  },
-  fileDetails: {
-    flex: 1,
-  },
-  fileName: {
+  breadcrumbText: {
     fontSize: 14,
     color: '#333',
   },
-  fileInfo: {
-    fontSize: 12,
-    color: '#999',
+  breadcrumbSeparator: {
+    marginHorizontal: 8,
+    color: '#666',
   },
-  deleteButton: {
-    backgroundColor: '#ffebee',
+  historyButton: {
+    padding: 8,
     borderRadius: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    backgroundColor: '#f0f0f0',
   },
-  deleteButtonText: {
-    color: '#F44336',
-    fontSize: 12,
+  historyButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  emptyMessage: {
+  historyMenu: {
+    backgroundColor: '#ffffff',
+    padding: 16,
+    borderRadius: 8,
+  },
+  historyMenuTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  historyMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+  },
+  historyMenuItemIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  historyMenuItemText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  emptyHistoryText: {
     textAlign: 'center',
     color: '#999',
     marginTop: 16,
     marginBottom: 8,
+  },
+  emptyDirectoryContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  emptyDirectoryIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyDirectoryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  emptyMessage: {
+    textAlign: 'center',
+    color: '#666',
+    marginBottom: 20,
+  },
+  emptyDirCreateButton: {
+    backgroundColor: '#2196F3',
+    borderRadius: 4,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  emptyDirCreateButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
   },
   progressContainer: {
     flexDirection: 'row',
@@ -1184,53 +1641,66 @@ const styles = StyleSheet.create({
   statusMessage: {
     color: '#666',
   },
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 16,
     width: '80%',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 15,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 10,
   },
   modalInput: {
-    backgroundColor: '#f7f7f7',
+    width: '100%',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 4,
+    borderColor: '#ccc',
+    borderRadius: 5,
     padding: 10,
-    marginBottom: 16,
+    marginBottom: 15,
   },
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  modalCancelButton: {
-    padding: 8,
-    marginRight: 8,
+  modalButton: {
+    padding: 10,
+    borderRadius: 5,
+    backgroundColor: '#ddd',
+    width: '45%',
+    alignItems: 'center',
   },
-  modalConfirmButton: {
-    backgroundColor: '#2196F3',
-    padding: 8,
-    borderRadius: 4,
-    minWidth: 64,
+  modalButtonPrimary: {
+    padding: 10,
+    borderRadius: 5,
+    backgroundColor: '#007BFF',
+    width: '45%',
     alignItems: 'center',
   },
   modalButtonText: {
-    color: '#ffffff',
+    color: '#fff',
     fontWeight: 'bold',
   },
   infoBox: {
@@ -1282,5 +1752,80 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     marginLeft: 4,
+  },
+  fileList: {
+    marginTop: 8,
+  },
+  fileItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#efefef',
+    paddingVertical: 8,
+  },
+  fileButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fileIcon: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  folderIcon: {
+    color: '#2196F3',
+  },
+  docIcon: {
+    color: '#FF5722',
+  },
+  fileDetails: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 14,
+    color: '#333',
+  },
+  fileInfo: {
+    fontSize: 12,
+    color: '#999',
+  },
+  deleteButton: {
+    backgroundColor: '#ffebee',
+    borderRadius: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  deleteButtonText: {
+    color: '#F44336',
+    fontSize: 12,
+  },
+  openButton: {
+    backgroundColor: '#2196F3',
+    borderRadius: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  openButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  actionIconButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
+  },
+  actionIconText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  fileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

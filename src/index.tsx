@@ -25,7 +25,7 @@ export type TaskToken = string;
 
 export interface FileInfo {
   name: string;
-  type: 'file' | 'directory';
+  type: 'file' | 'directory' | 'dir' | 'link' | 'unknown';
   size: number;
   timestamp: string;
 }
@@ -208,6 +208,25 @@ export function deleteDirectory(path: string): Promise<boolean> {
 }
 
 /**
+ * Create a new directory on the FTP server
+ * @param path The directory path to create
+ * @returns A promise that resolves to true when the directory is created successfully
+ */
+export function makeDirectory(path: string): Promise<boolean> {
+  return FtpHandler.makeDirectory(path);
+}
+
+/**
+ * Rename a file or directory on the FTP server
+ * @param oldPath The current path of the file or directory
+ * @param newPath The new path for the file or directory
+ * @returns A promise that resolves to true when renamed successfully
+ */
+export function rename(oldPath: string, newPath: string): Promise<boolean> {
+  return FtpHandler.rename(oldPath, newPath);
+}
+
+/**
  * Make sure token is properly formatted for tracking progress
  * @param localPath Local file path
  * @param remotePath Remote file path
@@ -239,4 +258,6 @@ export default {
   addProgressListener,
   setup,
   makeProgressToken,
+  makeDirectory,
+  rename,
 };

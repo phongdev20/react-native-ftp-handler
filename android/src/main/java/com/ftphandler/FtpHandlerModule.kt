@@ -364,6 +364,46 @@ class FtpHandlerModule(private val reactContext: ReactApplicationContext) :
         promise.resolve(true)
     }
 
+    @ReactMethod
+    fun makeDirectory(path: String, promise: Promise) {
+        Thread {
+            val client = FTPClient()
+            try {
+                login(client)
+                val success = client.makeDirectory(path)
+                if (success) {
+                    promise.resolve(true)
+                } else {
+                    promise.reject("ERROR", "Failed to create directory: $path")
+                }
+            } catch (e: IOException) {
+                promise.reject("ERROR", e.message)
+            } finally {
+                logout(client)
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun rename(oldPath: String, newPath: String, promise: Promise) {
+        Thread {
+            val client = FTPClient()
+            try {
+                login(client)
+                val success = client.rename(oldPath, newPath)
+                if (success) {
+                    promise.resolve(true)
+                } else {
+                    promise.reject("ERROR", "Failed to rename from $oldPath to $newPath")
+                }
+            } catch (e: IOException) {
+                promise.reject("ERROR", e.message)
+            } finally {
+                logout(client)
+            }
+        }.start()
+    }
+
     override fun getName(): String = "FtpHandler"
 
     // Alias cho phương thức list để tương thích với JS API
