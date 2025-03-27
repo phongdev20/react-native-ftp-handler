@@ -4,3 +4,4 @@
 @interface FtpHandler : NSObject <NativeFtpHandlerSpec>
 
 @end
+  

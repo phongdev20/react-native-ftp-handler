@@ -136,20 +136,15 @@ function FileListItem({
 }
 
 export default function App() {
-  // Chức năng di chuyển qua lại giữa các thư mục:
-  // 1. Nút Quay lại (←) và Tiến tới (→): Chuyển qua lại giữa các thư mục đã truy cập
-  // 2. Breadcrumb navigation: Hiển thị đường dẫn hiện tại và cho phép nhấp vào bất kỳ phần nào
-  // 3. Lịch sử thư mục gần đây: Nhấp vào nút "⋮" để xem và truy cập nhanh các thư mục đã truy cập gần đây
-
   const [status, setStatus] = React.useState('');
   const [files, setFiles] = React.useState<FileInfo[]>([]);
   const [host, setHost] = React.useState('eu-central-1.sftpcloud.io');
   const [port, setPort] = React.useState('21');
   const [username, setUsername] = React.useState(
-    'cd96ac68e88544548029217bd6f6ba5d'
+    '1d71a41ea46c423fb3ac514ee9e4ab80'
   );
   const [password, setPassword] = React.useState(
-    '2wblXDpJWBMs3DmvNrL2jWp45ox2AHo6'
+    'hs1Ahbv9WB0rPQjdsGTwOuvHyjQULXc0'
   );
   const [remotePath, setRemotePath] = React.useState('/');
   const [isUploading, setIsUploading] = React.useState(false);

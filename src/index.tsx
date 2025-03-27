@@ -18,7 +18,7 @@ const FtpHandler = NativeModules.FtpHandler
     );
 
 // Create event emitter for progress events
-const eventEmitter = new NativeEventEmitter();
+const eventEmitter = new NativeEventEmitter(FtpHandler);
 
 // Token type để xác định nhiệm vụ upload/download
 export type TaskToken = string;
